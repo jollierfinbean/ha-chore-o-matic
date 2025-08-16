@@ -1,0 +1,108 @@
+blueprint:
+  name: ✅ Chore-O-Matic
+  description: >
+    Automatically adds and removes a single chore/task to/from a to-do list based on defined triggers.
+    Prevents duplicates by checking existing active items (case-insensitive, trimmed).
+    Task description supports Jinja templates.
+    Removal can either mark the task as completed or delete it entirely.
+  domain: automation
+  author: Samuli Lager
+  source_url: https://github.com/yourusername/chore-o-matic
+  homeassistant:
+    min_version: "2024.10.0"
+  input:
+    todo_list:
+      name: To-do list
+      description: Select the to-do list entity where the task will be managed.
+      selector:
+        entity:
+          domain: todo
+    add_trigger:
+      name: Add trigger
+      description: Define the trigger that will add the task to the list.
+      selector:
+        trigger:
+    remove_trigger:
+      name: Remove trigger
+      description: Define the trigger that will remove or complete the task.
+      selector:
+        trigger:
+    task_name:
+      name: Task name
+      description: The name of the task to be added. Case-insensitive duplicate check is applied.
+      selector:
+        text:
+    task_description:
+      name: Task description
+      description: Optional description of the task. Supports Jinja templating.
+      default: ""
+      selector:
+        text:
+    task_due:
+      name: Task due in
+      description: Optional duration after which the task is due (e.g. 2 hours, 1 day).
+      default: null
+      selector:
+        duration:
+          enable_day: true
+    remove_mode:
+      name: Removal mode
+      description: Choose whether to mark the task as completed or delete it entirely when triggered.
+      default: Complete
+      selector:
+        select:
+          options:
+            - Complete
+            - Delete entirely
+
+mode: restart
+
+triggers:
+  - triggers: !input add_trigger
+  - triggers: !input remove_trigger
+
+variables:
+  todo_list: !input todo_list
+  task_name: !input task_name
+  task_description: !input task_description
+  task_due: !input task_due
+  remove_mode: !input remove_mode
+
+action:
+  - choose:
+      - conditions: "{{ trigger.idx | int(-1) == 0 }}"
+        sequence:
+          - service: todo.get_items
+            target:
+              entity_id: "{{ todo_list }}"
+            response_variable: existing_items
+          - condition: template
+            value_template: >
+              {% set items = existing_items[todo_list]['items']
+                 | selectattr('status', 'equalto', 'needs_action')
+                 | map(attribute='summary')
+                 | map('lower')
+                 | list %}
+              {{ task_name.strip() | lower not in items }}
+          - service: todo.add_item
+            data:
+              entity_id: "{{ todo_list }}"
+              item: "{{ task_name.strip() }}"
+              description: "{{ task_description }}"
+              due_datetime: "{{ now() + timedelta(**task_due) if task_due else task_due }}"
+      - conditions: "{{ trigger.idx | int(-1) == 1 }}"
+        sequence:
+          - choose:
+              - conditions: "{{ remove_mode == 'Complete' }}"
+                sequence:
+                  - service: todo.update_item
+                    data:
+                      entity_id: "{{ todo_list }}"
+                      item: "{{ task_name.strip() }}"
+                      status: completed
+              - conditions: "{{ remove_mode == 'Delete entirely' }}"
+                sequence:
+                  - service: todo.remove_item
+                    data:
+                      entity_id: "{{ todo_list }}"
+                      item: "{{ task_name.strip() }}"
