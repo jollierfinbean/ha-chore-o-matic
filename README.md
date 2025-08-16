@@ -1,4 +1,4 @@
-# ✅ Chore-O-Matic v2
+# ✅ Chore-O-Matic
 
 **Chore-O-Matic** is a Home Assistant blueprint that automatically adds and removes tasks from a to-do list based on defined triggers.
 It prevents duplicates (case-insensitive, with whitespace trimmed) and lets you choose whether a task should be marked as completed or deleted entirely.
