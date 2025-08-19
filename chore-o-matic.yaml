@@ -70,6 +70,7 @@ variables:
 
 action:
   - choose:
+      # ADD branch
       - conditions: "{{ trigger.idx | int(-1) == 0 }}"
         sequence:
           - service: todo.get_items
@@ -78,31 +79,42 @@ action:
             response_variable: existing_items
           - condition: template
             value_template: >
-              {% set items = existing_items[todo_list]['items']
-                 | selectattr('status', 'equalto', 'needs_action')
-                 | map(attribute='summary')
-                 | map('lower')
-                 | list %}
-              {{ task_name.strip() | lower not in items }}
+              {% set active = existing_items[todo_list]['items']
+                   | selectattr('status', 'equalto', 'needs_action')
+                   | map(attribute='summary') | map('lower') | list %}
+              {{ task_name.strip() | lower not in active }}
           - service: todo.add_item
             data:
               entity_id: "{{ todo_list }}"
               item: "{{ task_name.strip() }}"
               description: "{{ task_description }}"
               due_datetime: "{{ now() + timedelta(**task_due) if task_due else task_due }}"
+
+      # REMOVE branch
       - conditions: "{{ trigger.idx | int(-1) == 1 }}"
         sequence:
+          - service: todo.get_items
+            target:
+              entity_id: "{{ todo_list }}"
+            response_variable: existing_items
+          - variables:
+              target_uid: >
+                {% set name = task_name.strip() | lower %}
+                {% set active = existing_items[todo_list]['items']
+                   | selectattr('status', 'equalto', 'needs_action')
+                   | selectattr('summary','equalto', task_name.strip()) | list %}
+                {{ active[0].uid if active|length > 0 else none }}
           - choose:
-              - conditions: "{{ remove_mode == 'Complete' }}"
+              - conditions: "{{ remove_mode == 'Complete' and target_uid is not none }}"
                 sequence:
                   - service: todo.update_item
                     data:
                       entity_id: "{{ todo_list }}"
-                      item: "{{ task_name.strip() }}"
+                      item: "{{ target_uid }}"
                       status: completed
-              - conditions: "{{ remove_mode == 'Delete entirely' }}"
+              - conditions: "{{ remove_mode == 'Delete entirely' and target_uid is not none }}"
                 sequence:
                   - service: todo.remove_item
                     data:
                       entity_id: "{{ todo_list }}"
-                      item: "{{ task_name.strip() }}"
+                      item: "{{ target_uid }}"
