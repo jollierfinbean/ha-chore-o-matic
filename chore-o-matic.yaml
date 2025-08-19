@@ -37,7 +37,7 @@ blueprint:
       description: Optional description of the task. Supports Jinja templating.
       default: ""
       selector:
-        text:
+        template:
     task_due:
       name: Task due in
       description: Optional duration after which the task is due (e.g. 2 hours, 1 day).
